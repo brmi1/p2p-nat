@@ -1,12 +1,14 @@
 from socket import socket, AF_INET, SOCK_DGRAM
 from threading import Thread
 from time import time, sleep
+from random import randint
 
 addr = "" # SERVER IP
 port = 1024
 timeout = 60
 
 sock = socket(AF_INET, SOCK_DGRAM)
+sock.bind(("", randint(1024, 49151)))
 sock.sendto(b'', (addr, port))
 
 (addr_conn, port_conn) = eval(sock.recvfrom(1024)[0].decode())
