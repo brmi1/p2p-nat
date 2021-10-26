@@ -7,12 +7,14 @@ from threading import Thread
 from random import randint
 from time import time
 from os import _exit
+from ecies.utils import generate_eth_key
+from ecies import encrypt, decrypt
 
 class Window(QWidget):
     def __init__(self, app):
         QWidget.__init__(self)
-        self.setWindowTitle("dChat")
-        self.setWindowIcon(QIcon('icons/icon.png'))
+        self.setWindowTitle("Chat")
+        self.setWindowIcon(QIcon('icons/icon.png')
         self.setFixedSize(QSize(350, 300))
         layout = QVBoxLayout(self)
 
@@ -35,6 +37,12 @@ class Window(QWidget):
         self.addr_conn = ""
         self.port_conn = 0
 
+        key = generate_eth_key()
+        self.private_key = key.to_hex()
+        self.public_key = key.public_key.to_hex()
+
+        self.conn_pub_key = ""
+
     def keyPressEvent(self, event):
         if event.key() == Qt.Key_Return:
             message = self.lineEdit.text()
@@ -42,6 +50,7 @@ class Window(QWidget):
                 print("> " + message)
                 self.textEdit.append("> " + message)
                 message = message.encode()
+                message = encrypt(self.conn_pub_key, message)
                 message_chunks = list()
                 for x in range(0, len(message), 2048):
                     message_chunks.append(message[x:x+2048])
@@ -68,7 +77,8 @@ class HolePunching(Thread):
         print((window.addr_conn, window.port_conn))
 
         window.sock.sendto(b'', (window.addr_conn, window.port_conn))
-        window.textEdit.append("<span style=\"color:#008000;\">[CONNECTED]</span>")
+        window.sock.sendto(f"pub-key:{{{window.public_key}}}".encode(), (window.addr_conn, window.port_conn))
+        window.textEdit.append("<div style='color:#008000;'>[CONNECTED]</div>")
         window.textEdit.append("")
         window.lineEdit.setDisabled(False)
         window.lineEdit.setFocus()
@@ -87,19 +97,26 @@ class ServerThread(Thread):
         unw_msg = ["", "/ping", "cmd:{/ping-start}", "cmd:{/ping-end}"]
         while True:
             try:
-                message = window.sock.recvfrom(2048)[0].decode()
-                if not message in unw_msg:
+                message = window.sock.recvfrom(2048)[0]
+                try:
+                    message = message.decode()
+                    if message == "cmd:{/ping-start}":
+                        window.sock.sendto("cmd:{/ping-end}".encode(), (window.addr_conn, window.port_conn))
+                    if message == "cmd:{/ping-end}":
+                        window.ping = time() - window.ping
+                        window.textEdit.append(f"{round(window.ping, 4) * 1000} ms")
+                        window.textEdit.moveCursor(QTextCursor.End)
+                        window.ping = 0
+                    if "pub-key:{" in message:
+                        print("Key received")
+                        window.conn_pub_key = message[9:-1]
+                except UnicodeDecodeError:
+                    message = decrypt(window.private_key, message).decode()
                     print("< " + message)
                     window.textEdit.append("< " + message)
-                if message == "cmd:{/ping-start}":
-                    window.sock.sendto("cmd:{/ping-end}".encode(), (window.addr_conn, window.port_conn))
-                if message == "cmd:{/ping-end}":
-                    window.ping = time() - window.ping
-                    window.textEdit.append(f"{round(window.ping, 4) * 1000} ms")
-                    window.ping = 0
-                window.textEdit.moveCursor(QTextCursor.End)
+                    window.textEdit.moveCursor(QTextCursor.End)
             except ConnectionResetError:
-                window.textEdit.append("<span style=\"color:#ff0000;\">[DISCONNECTED]</span>")
+                window.textEdit.append("<div style='color:#ff0000;'>[DISCONNECTED]</div>")
                 window.textEdit.append("<b>Exit in 30 seconds</b>")
                 window.lineEdit.setDisabled(True)
                 self.sleep(1000 * 30)
@@ -128,7 +145,7 @@ if __name__ == "__main__":
 
     window = Window(app)
     window.show()
-    window.textEdit.append("<span style=\"color:#808080;\">[CONNECTING]</span>")
+    window.textEdit.append("<div style='color:#808080;'>[CONNECTING]</div>")
     window.lineEdit.setDisabled(True)
 
     holePunching = HolePunching(window)
