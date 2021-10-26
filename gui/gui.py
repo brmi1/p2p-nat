@@ -13,8 +13,8 @@ from ecies import encrypt, decrypt
 class Window(QWidget):
     def __init__(self, app):
         QWidget.__init__(self)
-        self.setWindowTitle("Chat")
-        self.setWindowIcon(QIcon('icons/icon.png')
+        self.setWindowTitle("dChat")
+        self.setWindowIcon(QIcon('icons/icon.png'))
         self.setFixedSize(QSize(350, 300))
         layout = QVBoxLayout(self)
 
